@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { TrelloHealthMonitor, SystemHealthReport, HealthStatus } from './health-monitor.js';
 import { TrelloClient } from '../trello-client.js';
 
@@ -49,9 +48,9 @@ export class TrelloHealthEndpoints {
    * Quick health status check - the digital pulse check!
    * Perfect for load balancers and monitoring systems.
    */
-  async getBasicHealth(): Promise<HealthEndpointResult> {
+  async getBasicHealth(apiKey: string, token: string): Promise<HealthEndpointResult> {
     try {
-      const healthReport = await this.healthMonitor.getSystemHealth(false);
+      const healthReport = await this.healthMonitor.getSystemHealth(apiKey, token, false);
 
       const quickReport = {
         status: healthReport.overall_status,
@@ -82,9 +81,9 @@ export class TrelloHealthEndpoints {
    * Comprehensive health diagnostic - the full medical examination!
    * Includes all subsystem checks, performance metrics, and recommendations.
    */
-  async getDetailedHealth(): Promise<HealthEndpointResult> {
+  async getDetailedHealth(apiKey: string, token: string): Promise<HealthEndpointResult> {
     try {
-      const healthReport = await this.healthMonitor.getSystemHealth(true);
+      const healthReport = await this.healthMonitor.getSystemHealth(apiKey, token, true);
 
       return {
         content: [
@@ -105,10 +104,10 @@ export class TrelloHealthEndpoints {
    * Metadata consistency verification - the data integrity scanner!
    * Checks for consistency between boards, lists, cards, and checklists.
    */
-  async getMetadataHealth(): Promise<HealthEndpointResult> {
+  async getMetadataHealth(apiKey: string, token: string): Promise<HealthEndpointResult> {
     try {
       const startTime = Date.now();
-      const metadataReport = await this.performMetadataConsistencyCheck();
+      const metadataReport = await this.performMetadataConsistencyCheck(apiKey, token);
       const duration = Date.now() - startTime;
 
       const result = {
@@ -138,9 +137,9 @@ export class TrelloHealthEndpoints {
    * Performance metrics analysis - the cardiovascular stress test!
    * Deep dive into response times, throughput, and system efficiency.
    */
-  async getPerformanceHealth(): Promise<HealthEndpointResult> {
+  async getPerformanceHealth(apiKey: string, token: string): Promise<HealthEndpointResult> {
     try {
-      const healthReport = await this.healthMonitor.getSystemHealth(false);
+      const healthReport = await this.healthMonitor.getSystemHealth(apiKey, token, false);
       const performanceAnalysis = this.analyzePerformanceMetrics(healthReport);
 
       return {
@@ -162,9 +161,9 @@ export class TrelloHealthEndpoints {
    * Automated system repair - the digital emergency room!
    * Attempts to automatically fix common issues when possible.
    */
-  async performRepair(): Promise<HealthEndpointResult> {
+  async performRepair(apiKey: string, token: string): Promise<HealthEndpointResult> {
     try {
-      const healthReport = await this.healthMonitor.getSystemHealth(true);
+      const healthReport = await this.healthMonitor.getSystemHealth(apiKey, token, true);
 
       if (!healthReport.repair_available) {
         return {
@@ -186,7 +185,7 @@ export class TrelloHealthEndpoints {
         };
       }
 
-      const repairResult = await this.attemptSystemRepair(healthReport);
+      const repairResult = await this.attemptSystemRepair(apiKey, token, healthReport);
 
       return {
         content: [
@@ -205,7 +204,7 @@ export class TrelloHealthEndpoints {
   /**
    * Perform comprehensive metadata consistency check
    */
-  private async performMetadataConsistencyCheck() {
+  private async performMetadataConsistencyCheck(apiKey: string, token: string) {
     const results = {
       consistent: true,
       issues: [] as string[],
@@ -223,14 +222,14 @@ export class TrelloHealthEndpoints {
       }
 
       // Get board information
-      const board = await this.trelloClient.getBoardById(boardId);
+      const board = await this.trelloClient.getBoardById(apiKey, token, boardId);
       if (board.closed) {
         results.consistent = false;
         results.issues.push('Active board is closed/archived');
       }
 
       // Get lists and check consistency
-      const lists = await this.trelloClient.getLists();
+      const lists = await this.trelloClient.getLists(apiKey, token);
       results.statistics.total_lists = lists.length;
       results.statistics.open_lists = lists.filter(l => !l.closed).length;
       results.statistics.closed_lists = lists.filter(l => l.closed).length;
@@ -241,7 +240,7 @@ export class TrelloHealthEndpoints {
       }
 
       // Get user cards for comparison
-      const myCards = await this.trelloClient.getMyCards();
+      const myCards = await this.trelloClient.getMyCards(apiKey, token);
       results.statistics.total_user_cards = myCards.length;
       results.statistics.open_user_cards = myCards.filter(c => !c.closed).length;
 
@@ -249,7 +248,7 @@ export class TrelloHealthEndpoints {
       const workspaceId = this.trelloClient.activeWorkspaceId;
       if (workspaceId) {
         try {
-          const workspace = await this.trelloClient.getWorkspaceById(workspaceId);
+          const workspace = await this.trelloClient.getWorkspaceById(apiKey, token, workspaceId);
           results.statistics.active_workspace = workspace.displayName;
         } catch (error) {
           results.consistent = false;
@@ -449,7 +448,11 @@ export class TrelloHealthEndpoints {
   /**
    * Attempt to repair common system issues
    */
-  private async attemptSystemRepair(healthReport: SystemHealthReport): Promise<RepairResult> {
+  private async attemptSystemRepair(
+    apiKey: string,
+    token: string,
+    healthReport: SystemHealthReport
+  ): Promise<RepairResult> {
     const result: RepairResult = {
       attempted: true,
       success: false,
@@ -466,11 +469,11 @@ export class TrelloHealthEndpoints {
         boardCheck.message.includes('No active board configured')
       ) {
         // Attempt to set first available board as active
-        const boards = await this.trelloClient.listBoards();
+        const boards = await this.trelloClient.listBoards(apiKey, token);
         const openBoards = boards.filter(b => !b.closed);
 
         if (openBoards.length > 0) {
-          await this.trelloClient.setActiveBoard(openBoards[0].id);
+          await this.trelloClient.setActiveBoard(apiKey, token, openBoards[0].id);
           result.actions_taken.push(`Set active board to "${openBoards[0].name}"`);
         }
       }

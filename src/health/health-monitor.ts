@@ -1,7 +1,6 @@
 import { TrelloClient } from '../trello-client.js';
 import { AxiosError } from 'axios';
 import { performance } from 'perf_hooks';
-import { RateLimiter } from '../types.js';
 
 /**
  * Health status levels for our magnificent Trello organism
@@ -86,24 +85,27 @@ export class TrelloHealthMonitor {
    * Get comprehensive system health status
    * This is the main cardiovascular examination! 🫀
    */
-  async getSystemHealth(detailed: boolean = false): Promise<SystemHealthReport> {
-    const startTime = performance.now();
+  async getSystemHealth(
+    apiKey: string,
+    token: string,
+    detailed: boolean = false
+  ): Promise<SystemHealthReport> {
     const checks: HealthCheck[] = [];
 
     // Run all health checks in parallel for maximum efficiency
     const checkPromises = [
-      this.checkTrelloApiConnectivity(),
-      this.checkBoardAccess(),
+      this.checkTrelloApiConnectivity(apiKey, token),
+      this.checkBoardAccess(apiKey, token),
       this.checkRateLimitHealth(),
       this.checkPerformanceMetrics(),
     ];
 
     if (detailed) {
       checkPromises.push(
-        this.checkListOperations(),
-        this.checkCardOperations(),
+        this.checkListOperations(apiKey, token),
+        this.checkCardOperations(apiKey, token),
         this.checkChecklistOperations(),
-        this.checkWorkspaceAccess()
+        this.checkWorkspaceAccess(apiKey, token)
       );
     }
 
@@ -139,13 +141,13 @@ export class TrelloHealthMonitor {
   /**
    * Check basic Trello API connectivity
    */
-  private async checkTrelloApiConnectivity(): Promise<HealthCheck> {
+  private async checkTrelloApiConnectivity(apiKey: string, token: string): Promise<HealthCheck> {
     const startTime = performance.now();
     const checkName = 'trello_api_connectivity';
 
     try {
       // Simple "me" endpoint check - lowest impact way to verify connectivity
-      await this.trelloClient.listBoards();
+      await this.trelloClient.listBoards(apiKey, token);
 
       const duration = performance.now() - startTime;
       this.recordPerformanceMetric(duration, true);
@@ -172,7 +174,7 @@ export class TrelloHealthMonitor {
   /**
    * Check if we can access the active board
    */
-  private async checkBoardAccess(): Promise<HealthCheck> {
+  private async checkBoardAccess(apiKey: string, token: string): Promise<HealthCheck> {
     const startTime = performance.now();
     const checkName = 'board_access';
 
@@ -191,7 +193,7 @@ export class TrelloHealthMonitor {
         };
       }
 
-      const board = await this.trelloClient.getBoardById(boardId);
+      const board = await this.trelloClient.getBoardById(apiKey, token, boardId);
       const duration = performance.now() - startTime;
       this.recordPerformanceMetric(duration, true);
 
@@ -308,12 +310,12 @@ export class TrelloHealthMonitor {
   /**
    * Check list operations (detailed check)
    */
-  private async checkListOperations(): Promise<HealthCheck> {
+  private async checkListOperations(apiKey: string, token: string): Promise<HealthCheck> {
     const startTime = performance.now();
     const checkName = 'list_operations';
 
     try {
-      const lists = await this.trelloClient.getLists();
+      const lists = await this.trelloClient.getLists(apiKey, token);
       const duration = performance.now() - startTime;
       this.recordPerformanceMetric(duration, true);
 
@@ -340,12 +342,12 @@ export class TrelloHealthMonitor {
   /**
    * Check card operations (detailed check)
    */
-  private async checkCardOperations(): Promise<HealthCheck> {
+  private async checkCardOperations(apiKey: string, token: string): Promise<HealthCheck> {
     const startTime = performance.now();
     const checkName = 'card_operations';
 
     try {
-      const myCards = await this.trelloClient.getMyCards();
+      const myCards = await this.trelloClient.getMyCards(apiKey, token);
       const duration = performance.now() - startTime;
       this.recordPerformanceMetric(duration, true);
 
@@ -414,12 +416,12 @@ export class TrelloHealthMonitor {
   /**
    * Check workspace access (detailed check)
    */
-  private async checkWorkspaceAccess(): Promise<HealthCheck> {
+  private async checkWorkspaceAccess(apiKey: string, token: string): Promise<HealthCheck> {
     const startTime = performance.now();
     const checkName = 'workspace_access';
 
     try {
-      const workspaces = await this.trelloClient.listWorkspaces();
+      const workspaces = await this.trelloClient.listWorkspaces(apiKey, token);
       const duration = performance.now() - startTime;
       this.recordPerformanceMetric(duration, true);
 

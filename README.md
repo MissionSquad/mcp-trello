@@ -191,6 +191,43 @@ docker compose up --build
 
 ## Configuration
 
+### Mission Squad Secrets Configuration
+
+When using mcp-trello with Mission Squad, you can configure secrets through the UI instead of environment variables. This allows running a single MCP server instance that serves multiple users with their individual credentials.
+
+#### Configuring Secrets in Mission Squad
+
+1. Open the MCP server configuration in Mission Squad UI
+2. Click "Add Secret"
+3. Configure the first secret:
+   - **Name:** `trelloApiKey`
+   - **Value:** Your Trello API Key from https://trello.com/app-key
+4. Click "Add Secret" again
+5. Configure the second secret:
+   - **Name:** `trelloToken`
+   - **Value:** Your Trello Token (generate at the app-key page)
+6. Click "Save All Secrets"
+
+#### Secret Names
+
+The server accepts these secret names in tool arguments:
+- `trelloApiKey` - Your Trello API key (required)
+- `trelloToken` - Your Trello authentication token (required)
+
+#### How It Works
+
+When Mission Squad calls a tool:
+1. Mission Squad automatically injects configured secrets into the tool arguments
+2. The server checks arguments first for `trelloApiKey` and `trelloToken`
+3. If not found in arguments, it falls back to environment variables
+4. If neither source has credentials, a clear error message is returned
+
+This pattern enables:
+- ✅ Multiple users sharing one MCP server instance
+- ✅ Per-user credential isolation
+- ✅ Backward compatibility with existing configurations
+- ✅ Clear error messages for misconfiguration
+
 ### Environment Variables
 
 The server can be configured using environment variables. Create a `.env` file in the root directory with the following variables:
@@ -207,12 +244,22 @@ TRELLO_BOARD_ID=your-board-id
 TRELLO_WORKSPACE_ID=your-workspace-id
 ```
 
+**Note:** When using Mission Squad with secrets configured, environment variables are optional. The server will use the per-user secrets injected by Mission Squad.
+
 You can get these values from:
 
   - API Key: [https://trello.com/app-key](https://trello.com/app-key)
   - Token: Generate using your API key
   - Board ID (optional, deprecated): Found in the board URL (e.g., [suspicious link removed])
   - Workspace ID: Found in workspace settings or using `list_workspaces` tool
+
+### Configuration Modes
+
+The server supports three configuration modes:
+
+1. **Mission Squad with secrets** - Per-user credentials via UI (recommended for multi-user deployments)
+2. **Environment variables only** - Traditional single-user setup
+3. **Mixed mode** - Secrets from Mission Squad override environment variables
 
 ### Board and Workspace Management
 
