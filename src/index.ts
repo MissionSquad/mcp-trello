@@ -566,10 +566,17 @@ class TrelloServer {
 
     this.healthEndpoints = new TrelloHealthEndpoints(this.trelloClient);
 
-    this.mcpServer = new McpServer({
-      name: 'trello-server',
-      version: '1.0.0',
-    });
+    this.mcpServer = new McpServer(
+      {
+        name: 'trello-server',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
 
     this.setupRequestHandlers();
 
