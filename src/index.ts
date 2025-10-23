@@ -11,17 +11,14 @@ class TrelloServer {
   private healthEndpoints: TrelloHealthEndpoints;
 
   constructor() {
-    const apiKey = process.env.TRELLO_API_KEY;
-    const token = process.env.TRELLO_TOKEN;
+    // Don't require env vars at startup - they can come from tool arguments
+    const apiKey = process.env.TRELLO_API_KEY || '';
+    const token = process.env.TRELLO_TOKEN || '';
     const defaultBoardId = process.env.TRELLO_BOARD_ID;
 
-    if (!apiKey || !token) {
-      throw new Error('TRELLO_API_KEY and TRELLO_TOKEN environment variables are required');
-    }
-
     this.trelloClient = new TrelloClient({
-      apiKey,
-      token,
+      apiKey, // Can be empty, will be provided per-request
+      token, // Can be empty, will be provided per-request
       defaultBoardId,
       boardId: defaultBoardId,
     });
@@ -41,6 +38,36 @@ class TrelloServer {
       await this.server.close();
       process.exit(0);
     });
+  }
+
+  /**
+   * Extract and validate Trello credentials from tool arguments with fallback to environment
+   * @param args Tool call arguments that may contain trelloApiKey and trelloToken
+   * @returns Validated credentials object
+   * @throws Error if credentials are not found in either source
+   */
+  private getCredentials(args: any): { apiKey: string; token: string } {
+    // Check arguments first (Mission Squad injects secrets here)
+    let apiKey = args.trelloApiKey;
+    let token = args.trelloToken;
+
+    // Fall back to environment variables if not in arguments
+    if (!apiKey) {
+      apiKey = process.env.TRELLO_API_KEY;
+    }
+    if (!token) {
+      token = process.env.TRELLO_TOKEN;
+    }
+
+    // Validate we have both credentials
+    if (!apiKey || !token) {
+      throw new Error(
+        'Trello credentials required. Configure secrets "trelloApiKey" and "trelloToken" in Mission Squad, ' +
+          'or set TRELLO_API_KEY and TRELLO_TOKEN environment variables.'
+      );
+    }
+
+    return { apiKey, token };
   }
 
   private handleError(error: unknown) {
@@ -70,9 +97,15 @@ class TrelloServer {
           listId: z.string().describe('ID of the Trello list'),
         },
       },
-      async ({ boardId, listId }) => {
+      async args => {
         try {
-          const cards = await this.trelloClient.getCardsByList(boardId, listId);
+          const { apiKey, token } = this.getCredentials(args);
+          const cards = await this.trelloClient.getCardsByList(
+            apiKey,
+            token,
+            args.boardId,
+            args.listId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(cards, null, 2) }],
           };
@@ -95,9 +128,10 @@ class TrelloServer {
             .describe('ID of the Trello board (uses default if not provided)'),
         },
       },
-      async ({ boardId }) => {
+      async args => {
         try {
-          const lists = await this.trelloClient.getLists(boardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const lists = await this.trelloClient.getLists(apiKey, token, args.boardId);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(lists, null, 2) }],
           };
@@ -125,9 +159,15 @@ class TrelloServer {
             .describe('Number of activities to fetch (default: 10)'),
         },
       },
-      async ({ boardId, limit }) => {
+      async args => {
         try {
-          const activity = await this.trelloClient.getRecentActivity(boardId, limit);
+          const { apiKey, token } = this.getCredentials(args);
+          const activity = await this.trelloClient.getRecentActivity(
+            apiKey,
+            token,
+            args.boardId,
+            args.limit
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(activity, null, 2) }],
           };
@@ -164,7 +204,8 @@ class TrelloServer {
       },
       async args => {
         try {
-          const card = await this.trelloClient.addCard(args.boardId, args);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.addCard(apiKey, token, args.boardId, args);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -202,7 +243,8 @@ class TrelloServer {
       },
       async args => {
         try {
-          const card = await this.trelloClient.updateCard(args.boardId, args);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.updateCard(apiKey, token, args.boardId, args);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -226,9 +268,15 @@ class TrelloServer {
           cardId: z.string().describe('ID of the card to archive'),
         },
       },
-      async ({ boardId, cardId }) => {
+      async args => {
         try {
-          const card = await this.trelloClient.archiveCard(boardId, cardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.archiveCard(
+            apiKey,
+            token,
+            args.boardId,
+            args.cardId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -255,9 +303,16 @@ class TrelloServer {
           listId: z.string().describe('ID of the target list'),
         },
       },
-      async ({ boardId, cardId, listId }) => {
+      async args => {
         try {
-          const card = await this.trelloClient.moveCard(boardId, cardId, listId);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.moveCard(
+            apiKey,
+            token,
+            args.boardId,
+            args.cardId,
+            args.listId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -281,9 +336,10 @@ class TrelloServer {
           name: z.string().describe('Name of the new list'),
         },
       },
-      async ({ boardId, name }) => {
+      async args => {
         try {
-          const list = await this.trelloClient.addList(boardId, name);
+          const { apiKey, token } = this.getCredentials(args);
+          const list = await this.trelloClient.addList(apiKey, token, args.boardId, args.name);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(list, null, 2) }],
           };
@@ -307,9 +363,15 @@ class TrelloServer {
           listId: z.string().describe('ID of the list to archive'),
         },
       },
-      async ({ boardId, listId }) => {
+      async args => {
         try {
-          const list = await this.trelloClient.archiveList(boardId, listId);
+          const { apiKey, token } = this.getCredentials(args);
+          const list = await this.trelloClient.archiveList(
+            apiKey,
+            token,
+            args.boardId,
+            args.listId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(list, null, 2) }],
           };
@@ -327,9 +389,10 @@ class TrelloServer {
         description: 'Fetch all cards assigned to the current user',
         inputSchema: {},
       },
-      async () => {
+      async args => {
         try {
-          const cards = await this.trelloClient.getMyCards();
+          const { apiKey, token } = this.getCredentials(args);
+          const cards = await this.trelloClient.getMyCards(apiKey, token);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(cards, null, 2) }],
           };
@@ -361,13 +424,16 @@ class TrelloServer {
             .describe('Optional name for the attachment (defaults to "Image Attachment")'),
         },
       },
-      async ({ boardId, cardId, imageUrl, name }) => {
+      async args => {
         try {
+          const { apiKey, token } = this.getCredentials(args);
           const attachment = await this.trelloClient.attachImageToCard(
-            boardId,
-            cardId,
-            imageUrl,
-            name
+            apiKey,
+            token,
+            args.boardId,
+            args.cardId,
+            args.imageUrl,
+            args.name
           );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(attachment, null, 2) }],
@@ -406,14 +472,17 @@ class TrelloServer {
             ),
         },
       },
-      async ({ boardId, cardId, fileUrl, name, mimeType }) => {
+      async args => {
         try {
+          const { apiKey, token } = this.getCredentials(args);
           const attachment = await this.trelloClient.attachFileToCard(
-            boardId,
-            cardId,
-            fileUrl,
-            name,
-            mimeType
+            apiKey,
+            token,
+            args.boardId,
+            args.cardId,
+            args.fileUrl,
+            args.name,
+            args.mimeType
           );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(attachment, null, 2) }],
@@ -437,7 +506,8 @@ class TrelloServer {
       'attach_image_data_to_card',
       {
         title: 'Attach Image Data to Card',
-        description: 'Attach an image to a card from base64 data or data URL (for screenshot uploads)',
+        description:
+          'Attach an image to a card from base64 data or data URL (for screenshot uploads)',
         inputSchema: {
           boardId: z
             .string()
@@ -446,11 +516,10 @@ class TrelloServer {
               'ID of the Trello board where the card exists (uses default if not provided)'
             ),
           cardId: z.string().describe('ID of the card to attach the image to'),
-          imageData: z.string().describe('Base64 encoded image data or data URL (e.g., data:image/png;base64,...)'),
-          name: z
+          imageData: z
             .string()
-            .optional()
-            .describe('Optional name for the attachment'),
+            .describe('Base64 encoded image data or data URL (e.g., data:image/png;base64,...)'),
+          name: z.string().optional().describe('Optional name for the attachment'),
           mimeType: z
             .string()
             .optional()
@@ -458,14 +527,17 @@ class TrelloServer {
             .describe('Optional MIME type (default: image/png)'),
         },
       },
-      async ({ boardId, cardId, imageData, name, mimeType }) => {
+      async args => {
         try {
+          const { apiKey, token } = this.getCredentials(args);
           const attachment = await this.trelloClient.attachImageDataToCard(
-            boardId,
-            cardId,
-            imageData,
-            name,
-            mimeType
+            apiKey,
+            token,
+            args.boardId,
+            args.cardId,
+            args.imageData,
+            args.name,
+            args.mimeType
           );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(attachment, null, 2) }],
@@ -484,9 +556,10 @@ class TrelloServer {
         description: 'List all boards the user has access to',
         inputSchema: {},
       },
-      async () => {
+      async args => {
         try {
-          const boards = await this.trelloClient.listBoards();
+          const { apiKey, token } = this.getCredentials(args);
+          const boards = await this.trelloClient.listBoards(apiKey, token);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(boards, null, 2) }],
           };
@@ -506,9 +579,10 @@ class TrelloServer {
           boardId: z.string().describe('ID of the board to set as active'),
         },
       },
-      async ({ boardId }) => {
+      async args => {
         try {
-          const board = await this.trelloClient.setActiveBoard(boardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const board = await this.trelloClient.setActiveBoard(apiKey, token, args.boardId);
           return {
             content: [
               {
@@ -531,9 +605,10 @@ class TrelloServer {
         description: 'List all workspaces the user has access to',
         inputSchema: {},
       },
-      async () => {
+      async args => {
         try {
-          const workspaces = await this.trelloClient.listWorkspaces();
+          const { apiKey, token } = this.getCredentials(args);
+          const workspaces = await this.trelloClient.listWorkspaces(apiKey, token);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(workspaces, null, 2) }],
           };
@@ -569,14 +644,15 @@ class TrelloServer {
             .describe('Create default lists (true by default)'),
         },
       },
-      async ({ name, desc, idOrganization, defaultLabels, defaultLists }) => {
+      async args => {
         try {
-          const board = await this.trelloClient.createBoard({
-            name,
-            desc,
-            idOrganization,
-            defaultLabels,
-            defaultLists,
+          const { apiKey, token } = this.getCredentials(args);
+          const board = await this.trelloClient.createBoard(apiKey, token, {
+            name: args.name,
+            desc: args.desc,
+            idOrganization: args.idOrganization,
+            defaultLabels: args.defaultLabels,
+            defaultLists: args.defaultLists,
           });
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(board, null, 2) }],
@@ -597,9 +673,14 @@ class TrelloServer {
           workspaceId: z.string().describe('ID of the workspace to set as active'),
         },
       },
-      async ({ workspaceId }) => {
+      async args => {
         try {
-          const workspace = await this.trelloClient.setActiveWorkspace(workspaceId);
+          const { apiKey, token } = this.getCredentials(args);
+          const workspace = await this.trelloClient.setActiveWorkspace(
+            apiKey,
+            token,
+            args.workspaceId
+          );
           return {
             content: [
               {
@@ -624,9 +705,14 @@ class TrelloServer {
           workspaceId: z.string().describe('ID of the workspace to list boards from'),
         },
       },
-      async ({ workspaceId }) => {
+      async args => {
         try {
-          const boards = await this.trelloClient.listBoardsInWorkspace(workspaceId);
+          const { apiKey, token } = this.getCredentials(args);
+          const boards = await this.trelloClient.listBoardsInWorkspace(
+            apiKey,
+            token,
+            args.workspaceId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(boards, null, 2) }],
           };
@@ -644,8 +730,9 @@ class TrelloServer {
         description: 'Get information about the currently active board',
         inputSchema: {},
       },
-      async () => {
+      async args => {
         try {
+          const { apiKey, token } = this.getCredentials(args);
           const boardId = this.trelloClient.activeBoardId;
           if (!boardId) {
             return {
@@ -653,7 +740,7 @@ class TrelloServer {
               isError: true,
             };
           }
-          const board = await this.trelloClient.getBoardById(boardId);
+          const board = await this.trelloClient.getBoardById(apiKey, token, boardId);
           return {
             content: [
               {
@@ -691,9 +778,15 @@ class TrelloServer {
             .describe('Whether to return card description in markdown format (default: false)'),
         },
       },
-      async ({ cardId, includeMarkdown }) => {
+      async args => {
         try {
-          const card = await this.trelloClient.getCard(cardId, includeMarkdown);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.getCard(
+            apiKey,
+            token,
+            args.cardId,
+            args.includeMarkdown
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -714,9 +807,15 @@ class TrelloServer {
           text: z.string().describe('The text of the comment to add'),
         },
       },
-      async ({ cardId, text }) => {
+      async args => {
         try {
-          const comment = await this.trelloClient.addCommentToCard(cardId, text);
+          const { apiKey, token } = this.getCredentials(args);
+          const comment = await this.trelloClient.addCommentToCard(
+            apiKey,
+            token,
+            args.cardId,
+            args.text
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(comment, null, 2) }],
           };
@@ -737,9 +836,15 @@ class TrelloServer {
           text: z.string().describe('The new text of the comment'),
         },
       },
-      async ({ commentId, text }) => {
+      async args => {
         try {
-          const success = await this.trelloClient.updateCommentOnCard(commentId, text);
+          const { apiKey, token } = this.getCredentials(args);
+          const success = await this.trelloClient.updateCommentOnCard(
+            apiKey,
+            token,
+            args.commentId,
+            args.text
+          );
           return {
             content: [{ type: 'text' as const, text: success ? 'success' : 'failure' }],
           };
@@ -759,9 +864,14 @@ class TrelloServer {
           commentId: z.string().describe('ID of the comment to delete'),
         },
       },
-      async ({ commentId }) => {
+      async args => {
         try {
-          const success = await this.trelloClient.deleteCommentFromCard(commentId);
+          const { apiKey, token } = this.getCredentials(args);
+          const success = await this.trelloClient.deleteCommentFromCard(
+            apiKey,
+            token,
+            args.commentId
+          );
           return {
             content: [{ type: 'text' as const, text: success ? 'success' : 'failure' }],
           };
@@ -786,9 +896,15 @@ class TrelloServer {
             .describe('Maximum number of comments to retrieve (default: 100)'),
         },
       },
-      async ({ cardId, limit }) => {
+      async args => {
         try {
-          const comments = await this.trelloClient.getCardComments(cardId, limit);
+          const { apiKey, token } = this.getCredentials(args);
+          const comments = await this.trelloClient.getCardComments(
+            apiKey,
+            token,
+            args.cardId,
+            args.limit
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(comments, null, 2) }],
           };
@@ -809,9 +925,15 @@ class TrelloServer {
           cardId: z.string().describe('ID of the Trello card'),
         },
       },
-      async ({ name, cardId }) => {
+      async args => {
         try {
-          const items = await this.trelloClient.createChecklist(name, cardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const items = await this.trelloClient.createChecklist(
+            apiKey,
+            token,
+            args.name,
+            args.cardId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(items, null, 2) }],
           };
@@ -832,7 +954,9 @@ class TrelloServer {
           cardId: z
             .string()
             .optional()
-            .describe('ID of the card to scope checklist search to (recommended to avoid ambiguity)'),
+            .describe(
+              'ID of the card to scope checklist search to (recommended to avoid ambiguity)'
+            ),
           boardId: z
             .string()
             .optional()
@@ -862,7 +986,9 @@ class TrelloServer {
           cardId: z
             .string()
             .optional()
-            .describe('ID of the card to scope checklist search to (recommended to avoid ambiguity)'),
+            .describe(
+              'ID of the card to scope checklist search to (recommended to avoid ambiguity)'
+            ),
           boardId: z
             .string()
             .optional()
@@ -871,7 +997,12 @@ class TrelloServer {
       },
       async ({ text, checkListName, cardId, boardId }) => {
         try {
-          const item = await this.trelloClient.addChecklistItem(text, checkListName, cardId, boardId);
+          const item = await this.trelloClient.addChecklistItem(
+            text,
+            checkListName,
+            cardId,
+            boardId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(item, null, 2) }],
           };
@@ -891,7 +1022,9 @@ class TrelloServer {
           cardId: z
             .string()
             .optional()
-            .describe('ID of the card to scope checklist search to (recommended to avoid ambiguity)'),
+            .describe(
+              'ID of the card to scope checklist search to (recommended to avoid ambiguity)'
+            ),
           boardId: z
             .string()
             .optional()
@@ -923,7 +1056,9 @@ class TrelloServer {
           cardId: z
             .string()
             .optional()
-            .describe('ID of the card to scope checklist search to (recommended to avoid ambiguity)'),
+            .describe(
+              'ID of the card to scope checklist search to (recommended to avoid ambiguity)'
+            ),
           boardId: z
             .string()
             .optional()
@@ -952,7 +1087,9 @@ class TrelloServer {
           cardId: z
             .string()
             .optional()
-            .describe('ID of the card to scope checklist search to (recommended to avoid ambiguity)'),
+            .describe(
+              'ID of the card to scope checklist search to (recommended to avoid ambiguity)'
+            ),
           boardId: z
             .string()
             .optional()
@@ -985,14 +1122,19 @@ class TrelloServer {
         inputSchema: {
           cardId: z.string().describe('ID of the card containing the checklist item'),
           checkItemId: z.string().describe('ID of the checklist item to update'),
-          state: z
-            .enum(['complete', 'incomplete'])
-            .describe('New state for the checklist item'),
+          state: z.enum(['complete', 'incomplete']).describe('New state for the checklist item'),
         },
       },
-      async ({ cardId, checkItemId, state }) => {
+      async args => {
         try {
-          const item = await this.trelloClient.updateChecklistItem(cardId, checkItemId, state);
+          const { apiKey, token } = this.getCredentials(args);
+          const item = await this.trelloClient.updateChecklistItem(
+            apiKey,
+            token,
+            args.cardId,
+            args.checkItemId,
+            args.state
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(item, null, 2) }],
           };
@@ -1015,9 +1157,10 @@ class TrelloServer {
             .describe('ID of the Trello board (uses default if not provided)'),
         },
       },
-      async ({ boardId }) => {
+      async args => {
         try {
-          const members = await this.trelloClient.getBoardMembers(boardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const members = await this.trelloClient.getBoardMembers(apiKey, token, args.boardId);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(members, null, 2) }],
           };
@@ -1037,9 +1180,15 @@ class TrelloServer {
           memberId: z.string().describe('ID of the member to assign to the card'),
         },
       },
-      async ({ cardId, memberId }) => {
+      async args => {
         try {
-          const card = await this.trelloClient.assignMemberToCard(cardId, memberId);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.assignMemberToCard(
+            apiKey,
+            token,
+            args.cardId,
+            args.memberId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -1059,9 +1208,15 @@ class TrelloServer {
           memberId: z.string().describe('ID of the member to remove from the card'),
         },
       },
-      async ({ cardId, memberId }) => {
+      async args => {
         try {
-          const card = await this.trelloClient.removeMemberFromCard(cardId, memberId);
+          const { apiKey, token } = this.getCredentials(args);
+          const card = await this.trelloClient.removeMemberFromCard(
+            apiKey,
+            token,
+            args.cardId,
+            args.memberId
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(card, null, 2) }],
           };
@@ -1084,9 +1239,10 @@ class TrelloServer {
             .describe('ID of the Trello board (uses default if not provided)'),
         },
       },
-      async ({ boardId }) => {
+      async args => {
         try {
-          const labels = await this.trelloClient.getBoardLabels(boardId);
+          const { apiKey, token } = this.getCredentials(args);
+          const labels = await this.trelloClient.getBoardLabels(apiKey, token, args.boardId);
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(labels, null, 2) }],
           };
@@ -1115,9 +1271,16 @@ class TrelloServer {
             ),
         },
       },
-      async ({ boardId, name, color }) => {
+      async args => {
         try {
-          const label = await this.trelloClient.createLabel(boardId, name, color);
+          const { apiKey, token } = this.getCredentials(args);
+          const label = await this.trelloClient.createLabel(
+            apiKey,
+            token,
+            args.boardId,
+            args.name,
+            args.color
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(label, null, 2) }],
           };
@@ -1138,9 +1301,16 @@ class TrelloServer {
           color: z.string().optional().describe('New color for the label'),
         },
       },
-      async ({ labelId, name, color }) => {
+      async args => {
         try {
-          const label = await this.trelloClient.updateLabel(labelId, name, color);
+          const { apiKey, token } = this.getCredentials(args);
+          const label = await this.trelloClient.updateLabel(
+            apiKey,
+            token,
+            args.labelId,
+            args.name,
+            args.color
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(label, null, 2) }],
           };
@@ -1159,9 +1329,10 @@ class TrelloServer {
           labelId: z.string().describe('ID of the label to delete'),
         },
       },
-      async ({ labelId }) => {
+      async args => {
         try {
-          await this.trelloClient.deleteLabel(labelId);
+          const { apiKey, token } = this.getCredentials(args);
+          await this.trelloClient.deleteLabel(apiKey, token, args.labelId);
           return {
             content: [{ type: 'text' as const, text: 'Label deleted successfully' }],
           };
@@ -1191,9 +1362,16 @@ class TrelloServer {
             .describe('Optional: Number of actions to fetch (default: all)'),
         },
       },
-      async ({ cardId, filter, limit }) => {
+      async args => {
         try {
-          const history = await this.trelloClient.getCardHistory(cardId, filter, limit);
+          const { apiKey, token } = this.getCredentials(args);
+          const history = await this.trelloClient.getCardHistory(
+            apiKey,
+            token,
+            args.cardId,
+            args.filter,
+            args.limit
+          );
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(history, null, 2) }],
           };
@@ -1206,9 +1384,10 @@ class TrelloServer {
 
   private setupHealthEndpoints() {
     // Basic health check endpoint
-    this.server.registerTool('get_health', HealthEndpointSchemas.basicHealth, async () => {
+    this.server.registerTool('get_health', HealthEndpointSchemas.basicHealth, async args => {
       try {
-        return await this.healthEndpoints.getBasicHealth();
+        const { apiKey, token } = this.getCredentials(args);
+        return await this.healthEndpoints.getBasicHealth(apiKey, token);
       } catch (error) {
         return this.handleError(error);
       }
@@ -1218,9 +1397,10 @@ class TrelloServer {
     this.server.registerTool(
       'get_health_detailed',
       HealthEndpointSchemas.detailedHealth,
-      async () => {
+      async args => {
         try {
-          return await this.healthEndpoints.getDetailedHealth();
+          const { apiKey, token } = this.getCredentials(args);
+          return await this.healthEndpoints.getDetailedHealth(apiKey, token);
         } catch (error) {
           return this.handleError(error);
         }
@@ -1231,9 +1411,10 @@ class TrelloServer {
     this.server.registerTool(
       'get_health_metadata',
       HealthEndpointSchemas.metadataHealth,
-      async () => {
+      async args => {
         try {
-          return await this.healthEndpoints.getMetadataHealth();
+          const { apiKey, token } = this.getCredentials(args);
+          return await this.healthEndpoints.getMetadataHealth(apiKey, token);
         } catch (error) {
           return this.handleError(error);
         }
@@ -1244,9 +1425,10 @@ class TrelloServer {
     this.server.registerTool(
       'get_health_performance',
       HealthEndpointSchemas.performanceHealth,
-      async () => {
+      async args => {
         try {
-          return await this.healthEndpoints.getPerformanceHealth();
+          const { apiKey, token } = this.getCredentials(args);
+          return await this.healthEndpoints.getPerformanceHealth(apiKey, token);
         } catch (error) {
           return this.handleError(error);
         }
@@ -1254,9 +1436,10 @@ class TrelloServer {
     );
 
     // System repair endpoint
-    this.server.registerTool('perform_system_repair', HealthEndpointSchemas.repair, async () => {
+    this.server.registerTool('perform_system_repair', HealthEndpointSchemas.repair, async args => {
       try {
-        return await this.healthEndpoints.performRepair();
+        const { apiKey, token } = this.getCredentials(args);
+        return await this.healthEndpoints.performRepair(apiKey, token);
       } catch (error) {
         return this.handleError(error);
       }
